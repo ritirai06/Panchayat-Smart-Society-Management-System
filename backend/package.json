@@ -1,0 +1,32 @@
+{
+  "name": "panchayat-backend",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "@xenova/transformers": "^2.17.2",
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^1.41.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-validator": "^7.0.1",
+    "firebase-admin": "^11.11.0",
+    "groq-sdk": "^0.7.0",
+    "jsonwebtoken": "^9.0.2",
+    "langchain": "^0.1.25",
+    "mongodb": "^7.1.1",
+    "mongoose": "^8.0.3",
+    "multer": "^1.4.5-lts.1",
+    "razorpay": "^2.9.6",
+    "socket.io": "^4.6.1",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

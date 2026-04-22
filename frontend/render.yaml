@@ -1,0 +1,9 @@
+services:
+  - type: static
+    name: panchayat-frontend
+    env: static
+    buildCommand: npm install && npm run build
+    publishPath: dist
+    routes:
+      - source: /(.*)
+        destination: /index.html

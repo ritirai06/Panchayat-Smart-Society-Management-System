@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api' })
+const api = axios.create({ 
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+  timeout: 10000 // 10 second timeout
+})
 
 // Attach token from localStorage on every request
 api.interceptors.request.use((config) => {
@@ -14,7 +17,7 @@ api.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401 && !err.config?._skipRedirect) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      window.location.hash = '#/login'
     }
     return Promise.reject(err)
   }

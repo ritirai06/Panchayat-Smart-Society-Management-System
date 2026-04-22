@@ -25,14 +25,32 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const token = localStorage.getItem('token')
+    
+    // Safety timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      setLoading(false)
+    }, 5000);
+
     if (token) {
       api.get('/auth/me', { _skipRedirect: true })
-        .then(({ data }) => { setUser(data.user); registerFcmToken(); })
-        .catch(() => { localStorage.removeItem('token') })
-        .finally(() => setLoading(false))
+        .then(({ data }) => { 
+          setUser(data.user); 
+          registerFcmToken(); 
+        })
+        .catch(() => { 
+          localStorage.removeItem('token');
+          setUser(null);
+        })
+        .finally(() => {
+          setLoading(false);
+          clearTimeout(timeout);
+        })
     } else {
       setLoading(false)
+      clearTimeout(timeout)
     }
+
+    return () => clearTimeout(timeout);
   }, [])
 
   const login = async (email, password) => {

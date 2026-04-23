@@ -7,12 +7,25 @@ const { sendPush, sendPushMulti } = require('../utils/firebase');
 const createComplaint = async (req, res) => {
   try {
     const societyId = req.body.societyId || req.user.society;
+    if (!societyId) {
+      return res.status(400).json({ success: false, message: 'User is not assigned to a society' });
+    }
 
     // Handle image uploads if files were attached
     let images = [];
     if (req.files?.length) {
-      const uploads = await Promise.all(req.files.map(f => uploadImage(f.buffer)));
-      images = uploads.map(u => u.url);
+      try {
+        const uploads = await Promise.all(req.files.map(f => uploadImage(f.buffer)));
+        images = uploads.map(u => u.url);
+      } catch (uploadErr) {
+        console.error('Cloudinary Upload Error:', uploadErr.message);
+        // If Cloudinary is missing, we can either fail or proceed without images.
+        // Failing with a 400 is better so the user knows why.
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Image upload failed. Please ensure Cloudinary is configured or try without images.' 
+        });
+      }
     }
 
     const complaint = await Complaint.create({
@@ -21,6 +34,8 @@ const createComplaint = async (req, res) => {
       society: societyId,
       images,
     });
+
+    console.log(`Complaint created: ${complaint._id} by ${req.user.name}`);
 
     // Socket.IO real-time
     const io = req.app.get('io');

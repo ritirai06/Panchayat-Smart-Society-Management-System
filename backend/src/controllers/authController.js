@@ -21,9 +21,20 @@ const register = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log(`Login attempt for: ${email}`);
+    
     const user = await User.findOne({ email }).populate('society', 'name');
-    if (!user || !(await user.matchPassword(password)))
+    if (!user) {
+      console.log(`User not found: ${email}`);
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    const isMatch = await user.matchPassword(password);
+    console.log(`Password match for ${email}: ${isMatch}`);
+
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
 
     const token = generateToken(user._id, user.role);
     res.json({

@@ -10,6 +10,7 @@ const server = http.createServer(app);
 
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://localhost:3001',
   'http://localhost:5173',
   'https://panchayat-smart-society-management-voat.onrender.com',
   'https://panchayat-smart-society-management-9kkm.onrender.com',

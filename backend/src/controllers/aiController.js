@@ -271,22 +271,39 @@ const bylawQuery = async (req, res) => {
   const start = Date.now();
   try {
     const society = await Society.findById(societyId);
-    if (!society?.rules) return res.json({ success: true, answer: 'No bylaws uploaded yet. Please ask your admin.' });
+    if (!society?.rules) return res.json({ success: true, answer: 'No bylaws uploaded yet. Please ask your admin to add society rules from the Society Settings page.' });
 
     let contextText = society.rules;
     if (society.bylawChunks?.length) {
       try {
         const relevantChunk = await findRelevantChunk(question, society.bylawChunks);
         if (relevantChunk) contextText = relevantChunk;
-      } catch { /* fallback to full rules */ }
+      } catch (e) {
+        console.warn('[Bylaw] Vector search failed, using full rules:', e.message);
+      }
     }
 
     const prompt = `Society Bylaws (relevant section):\n${contextText}\n\nQuestion: ${question}\nAnswer based only on the bylaws above:`;
     const { content: answer, tokens } = await groqChat([{ role: 'user', content: prompt }], 300);
     await logAI(req.user._id, societyId, 'bylaw', question, answer, tokens, Date.now() - start);
     res.json({ success: true, answer });
-  } catch {
-    res.status(500).json({ success: false, message: 'AI service unavailable. Please try again.' });
+  } catch (error) {
+    console.error('[Bylaw] Error:', error.message);
+    // Fallback: search rules text directly without AI
+    try {
+      const society = await Society.findById(societyId);
+      if (society?.rules) {
+        const rules = society.rules;
+        const q = question.toLowerCase();
+        const lines = rules.split('\n').filter(l => l.trim());
+        const matched = lines.filter(l => q.split(' ').some(w => w.length > 3 && l.toLowerCase().includes(w)));
+        const answer = matched.length
+          ? `Based on society bylaws:\n${matched.slice(0, 5).join('\n')}`
+          : `Here are the society rules:\n${rules.slice(0, 500)}${rules.length > 500 ? '...' : ''}`;
+        return res.json({ success: true, answer, fallback: true });
+      }
+    } catch { /* ignore */ }
+    res.json({ success: true, answer: 'AI service is temporarily unavailable. Please contact your society admin for bylaw queries.', fallback: true });
   }
 };
 

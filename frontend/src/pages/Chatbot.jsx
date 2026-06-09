@@ -87,10 +87,11 @@ export default function Chatbot() {
       const endpoint = mode === 'bylaw' ? '/ai/bylaw' : '/ai/chat'
       const payload = mode === 'bylaw' ? { question: msg, societyId } : { message: msg, societyId }
       const { data } = await api.post(endpoint, payload)
-      const reply = mode === 'bylaw' ? data.answer : data.reply
+      const reply = (mode === 'bylaw' ? data.answer : data.reply) || 'Sorry, I could not generate a response. Please try again.'
       setMessages((prev) => [...prev, { role: 'assistant', content: reply, fallback: data.fallback }])
-    } catch {
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'Sorry, I am having trouble connecting. Please try again.' }])
+    } catch (err) {
+      const serverMsg = err?.response?.data?.answer || err?.response?.data?.message
+      setMessages((prev) => [...prev, { role: 'assistant', content: serverMsg || 'Sorry, I am having trouble connecting. Please try again.' }])
     } finally {
       setLoading(false)
       inputRef.current?.focus()

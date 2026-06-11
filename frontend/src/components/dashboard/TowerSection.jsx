@@ -1,6 +1,6 @@
 import BuildingCard from './BuildingCard'
 
-export default function TowerSection({ towers, selectedTower, onTowerDetail }) {
+export default function TowerSection({ towers, selectedTower, onTowerDetail, societyImage }) {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -17,6 +17,7 @@ export default function TowerSection({ towers, selectedTower, onTowerDetail }) {
               tower={tower}
               active={selectedTower === tower.name}
               onClick={() => onTowerDetail(tower)}
+              societyImage={societyImage}
             />
           </div>
         ))}

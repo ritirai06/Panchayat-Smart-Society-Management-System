@@ -2,26 +2,30 @@ import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { FiDollarSign, FiBell, FiCheckCircle, FiX, FiSearch, FiSettings } from 'react-icons/fi'
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js'
+import { Bar } from 'react-chartjs-2'
+import { DollarSign, Bell, CheckCircle, X, Search, Settings, Download, Eye, FileText, Printer } from 'lucide-react'
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
 const statusBadge = (s) => {
   const map = {
     Paid: 'badge-paid',
     Pending: 'badge-pending',
     Overdue: 'badge-overdue',
-    Waived: 'bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-medium'
+    Waived: 'bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-semibold'
   }
   return map[s] || 'badge-pending'
 }
 
 const Modal = ({ title, onClose, children }) => (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-xl w-full max-w-md">
-      <div className="flex items-center justify-between p-6 border-b">
-        <h3 className="font-semibold text-lg">{title}</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><FiX size={20} /></button>
+  <div className="fixed inset-0 bg-slate-950/40 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-[24px] border border-slate-200 shadow-modal w-full max-w-md p-6 animate-scale-in">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <h3 className="font-bold text-base text-slate-900">{title}</h3>
+        <button onClick={onClose} className="btn-icon"><X size={18} /></button>
       </div>
-      <div className="p-6">{children}</div>
+      {children}
     </div>
   </div>
 )
@@ -32,11 +36,14 @@ export default function Payments() {
   const [stats, setStats] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState({ month: '', status: '' })
+  const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null) // 'generate'|'pay'|'status'
   const [selectedPayment, setSelectedPayment] = useState(null)
+  const [invoicePreview, setInvoicePreview] = useState(null)
   const [generateMonth, setGenerateMonth] = useState(new Date().toISOString().slice(0, 7))
   const [payForm, setPayForm] = useState({ transactionId: '', paymentMethod: 'Online', status: 'Paid' })
   const [submitting, setSubmitting] = useState(false)
+  
   const societyId = user?.society?._id || user?.society
   const isAdmin = user?.role === 'admin'
 
@@ -163,225 +170,427 @@ export default function Payments() {
     } catch { toast.error('Failed to send reminders') }
   }
 
+  const exportPayments = () => {
+    if (payments.length === 0) {
+      toast.error('No payments to export')
+      return
+    }
+    const headers = 'Resident,Flat,Month,Amount,Status,Due Date,Paid At,Reference No\n'
+    const rows = payments.map(p => `"${p.resident?.name || 'N/A'}","Flat ${p.flat?.flatNumber || 'N/A'}","${p.month}",${p.amount},"${p.status}","${new Date(p.dueDate).toLocaleDateString('en-IN')}","${p.paidAt ? new Date(p.paidAt).toLocaleDateString('en-IN') : '—'}","${p.transactionId || ''}"`).join('\n')
+    const blob = new Blob([headers + rows], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `panchayat_finance_report.csv`
+    link.click()
+    toast.success('CSV report exported!')
+  }
+
+  const printInvoice = () => {
+    window.print()
+  }
+
   const totalCollected = stats.find(s => s._id === 'Paid')?.total || 0
   const totalPending = stats.find(s => s._id === 'Pending')?.total || 0
   const totalOverdue = stats.find(s => s._id === 'Overdue')?.total || 0
   const pendingCount = stats.find(s => s._id === 'Pending')?.count || 0
+  const totalDuesExpected = totalCollected + totalPending + totalOverdue
+  const collectionRate = totalDuesExpected ? Math.round((totalCollected / totalDuesExpected) * 100) : 0
+
+  const filteredPayments = payments.filter(p => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (p.resident?.name || '').toLowerCase().includes(q) || 
+           (p.flat?.flatNumber || '').toLowerCase().includes(q) ||
+           (p.month || '').toLowerCase().includes(q)
+  })
 
   if (loading) return <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-200 border-t-emerald-600" /></div>
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in font-sans">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Payments</h2>
-          <p className="text-sm text-gray-500">{pendingCount} pending payment{pendingCount !== 1 ? 's' : ''}</p>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Finance Dashboard</h2>
+          <p className="text-sm text-slate-500 mt-0.5">{pendingCount} pending payment invoices</p>
         </div>
-        {isAdmin && (
-          <div className="flex gap-2">
-            <button onClick={sendReminders} className="btn-secondary flex items-center gap-2 text-sm">
-              <FiBell /> Send Reminders
-            </button>
-            <button onClick={() => setModal('generate')} className="btn-primary flex items-center gap-2 text-sm">
-              <FiDollarSign /> Generate Bills
-            </button>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={exportPayments} className="btn-secondary text-sm">
+            <Download size={14} /> Export CSV
+          </button>
+          {isAdmin && (
+            <>
+              <button onClick={sendReminders} className="btn-secondary text-sm">
+                <Bell size={14} /> Send Reminders
+              </button>
+              <button onClick={() => setModal('generate')} className="btn-primary text-sm">
+                <DollarSign size={14} /> Generate Bills
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Finance KPI Cards */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="card border-l-[3px] border-l-brand flex flex-col justify-between h-28 p-5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Collected</p>
+          <p className="text-xl font-black text-slate-900">₹{totalCollected.toLocaleString('en-IN')}</p>
+          <span className="text-[10px] text-emerald-600 font-semibold">{collectionRate}% collection efficiency</span>
+        </div>
+        <div className="card border-l-[3px] border-l-amber-400 flex flex-col justify-between h-28 p-5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pending Amount</p>
+          <p className="text-xl font-black text-slate-900">₹{totalPending.toLocaleString('en-IN')}</p>
+          <span className="text-[10px] text-slate-400 font-semibold">{pendingCount} active bills</span>
+        </div>
+        <div className="card border-l-[3px] border-l-rose-500 flex flex-col justify-between h-28 p-5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Overdue Total</p>
+          <p className="text-xl font-black text-slate-900">₹{totalOverdue.toLocaleString('en-IN')}</p>
+          <span className="text-[10px] text-rose-500 font-semibold">Exceeded due dates</span>
+        </div>
+        <div className="card border-l-[3px] border-l-slate-300 flex flex-col justify-between h-28 p-5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Statements</p>
+          <p className="text-xl font-black text-slate-900">{payments.length}</p>
+          <span className="text-[10px] text-slate-400 font-semibold">Ledger entries</span>
+        </div>
+      </div>
+
+      {/* Analytics Graph Block */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="card p-5 lg:col-span-2 space-y-4">
+          <p className="text-xs font-bold uppercase text-slate-400 tracking-wider">Revenue Breakdown</p>
+          <div className="h-44">
+            <Bar 
+              data={{
+                labels: ['Collected', 'Pending', 'Overdue'],
+                datasets: [{
+                  data: [totalCollected, totalPending, totalOverdue],
+                  backgroundColor: ['#10B981', '#F59E0B', '#EF4444'],
+                  borderRadius: 8,
+                  maxBarThickness: 50,
+                }]
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  x: { grid: { display: false }, border: { display: false } },
+                  y: { grid: { color: '#f1f5f9' }, border: { display: false } },
+                }
+              }}
+            />
           </div>
-        )}
+        </div>
+
+        {/* Payment Methods Breakdown */}
+        <div className="card p-5 space-y-4">
+          <p className="text-xs font-bold uppercase text-slate-400 tracking-wider">Collection Channels</p>
+          <div className="space-y-3 pt-2 text-xs font-semibold text-slate-600">
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span>Razorpay Gateway (UPI/Card)</span>
+                <span>65%</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full bg-brand rounded-full" style={{ width: '65%' }} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span>Cheque Clearing</span>
+                <span>20%</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full bg-slate-600 rounded-full" style={{ width: '20%' }} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span>Cash Payments</span>
+                <span>15%</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full bg-amber-450 bg-amber-500 rounded-full" style={{ width: '15%' }} />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card border-l-4 border-l-emerald-500">
-          <p className="text-sm text-emerald-700 font-medium">Collected</p>
-          <p className="text-2xl font-bold text-emerald-800">₹{totalCollected.toLocaleString('en-IN')}</p>
-          <p className="text-xs text-indigo-400 mt-1">{stats.find(s => s._id === 'Paid')?.count || 0} payments</p>
+      {/* Filters & Search */}
+      <div className="flex gap-3 flex-wrap items-center">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+          <input className="input pl-9 text-xs py-2" placeholder="Search by name, flat, month..."
+            value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <div className="card border-l-4 border-l-amber-400">
-          <p className="text-sm text-amber-600 font-medium">Pending</p>
-          <p className="text-2xl font-bold text-amber-700">₹{totalPending.toLocaleString('en-IN')}</p>
-          <p className="text-xs text-amber-500 mt-1">{pendingCount} payments</p>
-        </div>
-        <div className="card border-l-4 border-l-red-400">
-          <p className="text-sm text-red-500 font-medium">Overdue</p>
-          <p className="text-2xl font-bold text-red-600">₹{totalOverdue.toLocaleString('en-IN')}</p>
-          <p className="text-xs text-red-400 mt-1">{stats.find(s => s._id === 'Overdue')?.count || 0} payments</p>
-        </div>
-        <div className="card border-l-4 border-l-zinc-300">
-          <p className="text-sm text-zinc-500 font-medium">Total Records</p>
-          <p className="text-2xl font-bold text-zinc-700">{payments.length}</p>
-          <p className="text-xs text-slate-400 mt-1">All time</p>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <input type="month" className="input w-auto text-sm" value={filter.month}
+        <input type="month" className="input w-auto text-xs py-2" value={filter.month}
           onChange={e => setFilter({ ...filter, month: e.target.value })} />
-        <select className="input w-auto text-sm" value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}>
+        <select className="input w-auto text-xs py-2" value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}>
           <option value="">All Status</option>
           {['Pending', 'Paid', 'Overdue', 'Waived'].map(s => <option key={s}>{s}</option>)}
         </select>
-        {(filter.month || filter.status) && (
-          <button onClick={() => setFilter({ month: '', status: '' })} className="btn-secondary text-sm flex items-center gap-1">
-            <FiX size={14} /> Clear
+        {(filter.month || filter.status || search) && (
+          <button onClick={() => { setFilter({ month: '', status: '' }); setSearch('') }} className="btn-secondary text-xs py-2 flex items-center gap-1">
+            <X size={12} /> Clear
           </button>
         )}
       </div>
 
-      {/* Payments Table */}
-      <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-indigo-50/50 border-b border-indigo-100">
-              <tr>
-                <th className="table-head">Resident</th>
-                <th className="table-head">Flat</th>
-                <th className="table-head">Month</th>
-                <th className="table-head">Amount</th>
-                <th className="table-head">Status</th>
-                <th className="table-head">Due Date</th>
-                <th className="table-head">Paid On</th>
-                {isAdmin && <th className="table-head">Action</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-indigo-50">
-              {payments.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-10 text-gray-400">No payment records found</td></tr>
-              )}
-              {payments.map(p => (
+      {/* Invoices List Table */}
+      <div className="table-wrap">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className="table-head">Resident details</th>
+              <th className="table-head">Allocated Unit</th>
+              <th className="table-head">Billing Cycle</th>
+              <th className="table-head">Amount Due</th>
+              <th className="table-head">Billing Status</th>
+              <th className="table-head">Due Date</th>
+              <th className="table-head">Settled On</th>
+              <th className="table-head text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPayments.length === 0 ? (
+              <tr><td colSpan={8} className="text-center py-12 text-slate-400 font-medium">No invoice transactions logged.</td></tr>
+            ) : (
+              filteredPayments.map(p => (
                 <tr key={p._id} className="table-row">
-                  <td className="table-cell font-medium text-slate-900">{p.resident?.name || 'N/A'}</td>
-                  <td className="table-cell">Flat {p.flat?.flatNumber || 'N/A'}</td>
-                  <td className="table-cell">{p.month}</td>
-                  <td className="table-cell font-semibold text-indigo-700">₹{p.amount.toLocaleString('en-IN')}</td>
+                  <td className="table-cell font-bold text-slate-800">{p.resident?.name || 'N/A'}</td>
+                  <td className="table-cell font-semibold">Flat {p.flat?.flatNumber || 'N/A'}</td>
+                  <td className="table-cell text-xs font-mono">{p.month}</td>
+                  <td className="table-cell font-bold text-brand">₹{p.amount.toLocaleString('en-IN')}</td>
                   <td className="table-cell"><span className={statusBadge(p.status)}>{p.status}</span></td>
-                  <td className="table-cell">{new Date(p.dueDate).toLocaleDateString('en-IN')}</td>
-                  <td className="table-cell">
+                  <td className="table-cell text-xs">{new Date(p.dueDate).toLocaleDateString('en-IN')}</td>
+                  <td className="table-cell text-xs text-slate-500 font-medium">
                     {p.paidAt ? new Date(p.paidAt).toLocaleDateString('en-IN') : '—'}
-                    {p.transactionId && <p className="text-xs text-slate-400">{p.transactionId}</p>}
+                    {p.transactionId && <p className="text-[10px] text-slate-400 font-mono mt-0.5">{p.transactionId}</p>}
                   </td>
-                  {isAdmin ? (
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        {(p.status === 'Pending' || p.status === 'Overdue') && (
-                          <button onClick={() => openPayModal(p)}
-                            className="flex items-center gap-1 text-emerald-700 hover:text-emerald-800 text-xs font-semibold hover:bg-emerald-50 px-2 py-1.5 rounded-lg transition-colors">
-                            <FiCheckCircle size={12} /> Mark Paid
+                  <td className="table-cell text-right">
+                    <div className="inline-flex gap-1 items-center justify-end">
+                      <button onClick={() => setInvoicePreview(p)} title="Preview Digital Invoice"
+                        className="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors">
+                        <Eye size={14} />
+                      </button>
+                      {isAdmin ? (
+                        <>
+                          {(p.status === 'Pending' || p.status === 'Overdue') && (
+                            <button onClick={() => openPayModal(p)}
+                              className="text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded text-xs font-bold transition-all">
+                              Mark Paid
+                            </button>
+                          )}
+                          <button onClick={() => openStatusModal(p)}
+                            className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors" title="Change Invoice Status">
+                            <Settings size={13} />
                           </button>
-                        )}
-                        <button onClick={() => openStatusModal(p)}
-                          className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 text-xs font-medium hover:bg-indigo-50 px-2 py-1.5 rounded-lg transition-colors">
-                          <FiSettings size={12} /> Change Status
-                        </button>
-                      </div>
-                    </td>
-                  ) : (
-                    <td className="px-4 py-3">
-                      {(p.status === 'Pending' || p.status === 'Overdue') && (
-                        <button 
-                          onClick={() => handlePayment(p)}
-                          disabled={submitting}
-                          className="flex items-center gap-1 text-white bg-emerald-600 hover:bg-emerald-700 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors shadow-sm disabled:opacity-50">
-                          <FiDollarSign size={12} /> Pay Now
-                        </button>
+                        </>
+                      ) : (
+                        (p.status === 'Pending' || p.status === 'Overdue') && (
+                          <button 
+                            onClick={() => handlePayment(p)}
+                            disabled={submitting}
+                            className="text-white bg-brand hover:bg-brand-dark px-3 py-1 rounded text-xs font-bold transition-colors disabled:opacity-50">
+                            Pay Now
+                          </button>
+                        )
                       )}
-                    </td>
-                  )}
+                    </div>
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
+
+      {/* Invoice Preview Slide Drawer */}
+      {invoicePreview && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/20 backdrop-blur-xs print:bg-white print:p-0">
+          <div className="w-full max-w-lg bg-white border-l border-slate-200 h-full flex flex-col shadow-2xl animate-slide-in-r print:border-none print:w-full print:h-auto">
+            {/* Drawer Header */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center print:hidden">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                <FileText size={14} className="text-brand" /> Digital Invoice Breakdown
+              </h3>
+              <button onClick={() => setInvoicePreview(null)} className="btn-icon"><X size={18} /></button>
+            </div>
+
+            {/* Printable Invoice Page */}
+            <div id="printable-invoice" className="flex-1 overflow-y-auto p-8 space-y-6 font-sans text-xs">
+              <div className="flex justify-between items-start border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-base font-black text-slate-800 uppercase tracking-wide">Panchayat Society</h2>
+                  <p className="text-[10px] text-slate-400 mt-1">Maintenance & Utilities Ledger</p>
+                </div>
+                <div className="text-right">
+                  <span className={statusBadge(invoicePreview.status)}>{invoicePreview.status}</span>
+                  <p className="text-[10px] text-slate-400 font-mono mt-2">Invoice #{invoicePreview._id?.substring(0, 8).toUpperCase()}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
+                <div>
+                  <p className="text-slate-400 text-[9px] uppercase font-bold mb-1">Billing To</p>
+                  <p className="font-bold text-slate-800">{invoicePreview.resident?.name || 'Resident Name'}</p>
+                  <p className="mt-0.5">Flat {invoicePreview.flat?.flatNumber || 'N/A'}</p>
+                  <p className="text-slate-400 font-mono font-medium text-[10px]">{invoicePreview.resident?.phone || ''}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-slate-400 text-[9px] uppercase font-bold mb-1">Details</p>
+                  <p>Billing month: <span className="font-bold text-slate-800 font-mono">{invoicePreview.month}</span></p>
+                  <p>Issue Date: {new Date(invoicePreview.dueDate).toLocaleDateString('en-IN')}</p>
+                  <p className="text-rose-500 font-bold">Due Date: {new Date(invoicePreview.dueDate).toLocaleDateString('en-IN')}</p>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="border border-slate-100 rounded-xl overflow-hidden shadow-inner bg-slate-50/50">
+                <div className="grid grid-cols-3 bg-slate-100/60 p-3 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                  <span>Description</span>
+                  <span className="text-center">Rate / Cycle</span>
+                  <span className="text-right">Amount</span>
+                </div>
+                <div className="divide-y divide-slate-100 p-3 space-y-2">
+                  <div className="grid grid-cols-3 text-slate-700 font-medium">
+                    <span>Society Maintenance Charge</span>
+                    <span className="text-center">Monthly recurring</span>
+                    <span className="text-right">₹{invoicePreview.amount}</span>
+                  </div>
+                  <div className="grid grid-cols-3 text-slate-700 font-medium pt-2">
+                    <span>Shared Lift/Cleaning Maintenance</span>
+                    <span className="text-center">Included</span>
+                    <span className="text-right">₹0</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-slate-100">
+                <div className="text-right space-y-1.5 min-w-[150px]">
+                  <div className="flex justify-between font-semibold text-slate-500">
+                    <span>Subtotal</span>
+                    <span>₹{invoicePreview.amount}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold text-slate-500">
+                    <span>Tax (0% GST)</span>
+                    <span>₹0</span>
+                  </div>
+                  <div className="flex justify-between font-black text-slate-900 border-t border-slate-200 pt-2 text-sm">
+                    <span>Total Amount</span>
+                    <span>₹{invoicePreview.amount}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-400 italic text-center pt-8 border-t border-slate-100/80">
+                Thank you for contributing to your society wellness and maintenance.
+              </div>
+            </div>
+
+            {/* Drawer Footer Actions */}
+            <div className="p-6 border-t border-slate-100 flex gap-2 print:hidden">
+              <button onClick={printInvoice} className="btn-secondary flex-1 justify-center py-2 text-xs font-semibold">
+                <Printer size={14} /> Print Invoice
+              </button>
+              <button onClick={() => setInvoicePreview(null)} className="btn-primary flex-1 justify-center py-2 text-xs font-bold">
+                Close Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Generate Bills Modal */}
       {modal === 'generate' && (
-        <Modal title="Generate Monthly Bills" onClose={() => setModal(null)}>
+        <Modal title="Generate Monthly Maintenance" onClose={() => setModal(null)}>
           <form onSubmit={generateBills} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Select Month</label>
+              <label className="input-label">Select Billing Month</label>
               <input type="month" className="input" value={generateMonth}
                 onChange={e => setGenerateMonth(e.target.value)} required />
-              <p className="text-xs text-gray-400 mt-1">Bills will be generated for all active residents</p>
+              <p className="text-[10px] text-slate-400 mt-1 font-medium">Invoices will be auto-generated for all mapped residents</p>
             </div>
-            <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-sm text-emerald-700">
-              <p className="font-medium">This will create maintenance bills for all active residents.</p>
-              <p className="mt-1 text-indigo-500">Duplicate bills for the same month will be skipped.</p>
+            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 text-xs font-semibold text-emerald-800 space-y-1">
+              <p>This triggers recurring maintenance bills for all units.</p>
+              <p className="text-indigo-500 font-medium">Any double invoices raised for the same cycle will be skipped.</p>
             </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={() => setModal(null)} className="btn-secondary flex-1">Cancel</button>
-              <button type="submit" className="btn-primary flex-1" disabled={submitting}>
-                {submitting ? 'Generating...' : 'Generate Bills'}
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setModal(null)} className="btn-secondary flex-1 justify-center">Cancel</button>
+              <button type="submit" className="btn-primary flex-1 justify-center text-xs font-bold animate-pulse" disabled={submitting}>
+                {submitting ? 'Generating...' : 'Confirm Generation'}
               </button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* Mark Paid Modal */}
+      {/* Record Cash Payment Modal */}
       {modal === 'pay' && selectedPayment && (
-        <Modal title="Record Payment" onClose={() => { setModal(null); setSelectedPayment(null) }}>
-          <form onSubmit={markPaid} className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-3 text-sm">
-              <p className="font-medium text-gray-900">{selectedPayment.resident?.name}</p>
-              <p className="text-gray-500">Flat {selectedPayment.flat?.flatNumber} • {selectedPayment.month}</p>
-              <p className="text-lg font-bold text-gray-900 mt-1">₹{selectedPayment.amount.toLocaleString('en-IN')}</p>
+        <Modal title="Record Cash Ledger" onClose={() => { setModal(null); setSelectedPayment(null) }}>
+          <form onSubmit={markPaid} className="space-y-4 font-sans text-xs">
+            <div className="bg-slate-50 border rounded-2xl p-4">
+              <p className="font-bold text-slate-900">{selectedPayment.resident?.name}</p>
+              <p className="text-slate-400 font-semibold mt-0.5">Flat {selectedPayment.flat?.flatNumber} • Month: {selectedPayment.month}</p>
+              <p className="text-base font-black text-brand mt-2">₹{selectedPayment.amount.toLocaleString('en-IN')}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
-              <select className="input" value={payForm.paymentMethod} onChange={e => setPayForm({ ...payForm, paymentMethod: e.target.value })}>
-                {['Online', 'Cash', 'Cheque', 'UPI'].map(m => <option key={m}>{m}</option>)}
+              <label className="input-label">Payment Mode</label>
+              <select className="input text-xs" value={payForm.paymentMethod} onChange={e => setPayForm({ ...payForm, paymentMethod: e.target.value })}>
+                {['Cash', 'Cheque', 'UPI', 'NetBanking'].map(m => <option key={m}>{m}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Transaction ID (optional)</label>
-              <input className="input" placeholder="TXN123456 / Cheque No." value={payForm.transactionId}
+              <label className="input-label">Reference / Slip ID (optional)</label>
+              <input className="input" placeholder="e.g. CHQ00123 / UPI_REF" value={payForm.transactionId}
                 onChange={e => setPayForm({ ...payForm, transactionId: e.target.value })} />
             </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={() => { setModal(null); setSelectedPayment(null) }} className="btn-secondary flex-1">Cancel</button>
-              <button type="submit" className="btn-primary flex-1" disabled={submitting}>
-                {submitting ? 'Saving...' : 'Confirm Payment'}
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => { setModal(null); setSelectedPayment(null) }} className="btn-secondary flex-1 justify-center">Cancel</button>
+              <button type="submit" className="btn-primary flex-1 justify-center text-xs font-bold" disabled={submitting}>
+                {submitting ? 'Processing...' : 'Confirm Receipt'}
               </button>
             </div>
           </form>
         </Modal>
       )}
-      {/* Change Status Modal */}
+
+      {/* Adjust Status Modal */}
       {modal === 'status' && selectedPayment && (
-        <Modal title="Update Payment Status" onClose={() => { setModal(null); setSelectedPayment(null) }}>
-          <form onSubmit={markPaid} className="space-y-4">
-            <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
+        <Modal title="Adjust Billing Status" onClose={() => { setModal(null); setSelectedPayment(null) }}>
+          <form onSubmit={markPaid} className="space-y-4 font-sans text-xs">
+            <div className="bg-slate-50 border rounded-2xl p-4">
               <p className="font-bold text-slate-900">{selectedPayment.resident?.name}</p>
-              <p className="text-xs text-slate-500 mt-0.5">Flat {selectedPayment.flat?.flatNumber} · {selectedPayment.month}</p>
-              <p className="text-lg font-black text-indigo-700 mt-2">₹{selectedPayment.amount.toLocaleString('en-IN')}</p>
+              <p className="text-slate-400 font-semibold mt-0.5">Flat {selectedPayment.flat?.flatNumber} · Month: {selectedPayment.month}</p>
+              <p className="text-base font-black text-brand mt-2">₹{selectedPayment.amount.toLocaleString('en-IN')}</p>
             </div>
             <div>
-              <label className="input-label">Select New Status</label>
-              <select className="input" value={payForm.status} onChange={e => setPayForm({ ...payForm, status: e.target.value })}>
+              <label className="input-label">Change Status</label>
+              <select className="input text-xs" value={payForm.status} onChange={e => setPayForm({ ...payForm, status: e.target.value })}>
                 {['Pending', 'Paid', 'Overdue', 'Waived'].map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             {payForm.status === 'Paid' && (
-              <div className="space-y-4 animate-fade-in">
+              <div className="space-y-3 animate-fade-in">
                 <div>
-                  <label className="input-label">Payment Method</label>
-                  <select className="input" value={payForm.paymentMethod} onChange={e => setPayForm({ ...payForm, paymentMethod: e.target.value })}>
+                  <label className="input-label">Adjustment Mode</label>
+                  <select className="input text-xs" value={payForm.paymentMethod} onChange={e => setPayForm({ ...payForm, paymentMethod: e.target.value })}>
                     {['Online', 'Cash', 'Cheque', 'UPI'].map(m => <option key={m}>{m}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="input-label">Transaction ID / Reference</label>
-                  <input className="input" placeholder="e.g. TXN123456" value={payForm.transactionId}
+                  <label className="input-label">Adjustment Reference ID</label>
+                  <input className="input" placeholder="Slip or TXN reference" value={payForm.transactionId}
                     onChange={e => setPayForm({ ...payForm, transactionId: e.target.value })} />
                 </div>
               </div>
             )}
             <div className="flex gap-3 pt-2">
-              <button type="button" onClick={() => { setModal(null); setSelectedPayment(null) }} className="btn-secondary flex-1">Cancel</button>
-              <button type="submit" className="btn-primary flex-1" disabled={submitting}>
-                {submitting ? 'Updating...' : 'Update Status'}
+              <button type="button" onClick={() => { setModal(null); setSelectedPayment(null) }} className="btn-secondary flex-1 justify-center">Cancel</button>
+              <button type="submit" className="btn-primary flex-1 justify-center text-xs font-bold" disabled={submitting}>
+                {submitting ? 'Updating...' : 'Save Adjustments'}
               </button>
             </div>
           </form>

@@ -1,133 +1,193 @@
-import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { motion } from 'framer-motion'
+import { Building2, Eye, EyeOff, Zap, Shield, Users, ArrowRight, Star, Award, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Building2, Mail, Lock, Eye, EyeOff, ArrowRight, Shield, Users, Info } from 'lucide-react'
-import api from '../services/api'
+
+const features = [
+  { icon: Shield, title: 'Enterprise Security', text: 'State-of-the-art secure JWT session authentication.' },
+  { icon: Zap, title: 'Autonomous Operations', text: 'Simulated ANPR OpenCV gate scanners and AI assistant.' },
+  { icon: Users, title: 'Unified Society OS', text: 'Centralized resident, parking, finance, and SOS channels.' },
+]
 
 export default function Login() {
+  const { login } = useAuth()
+  const navigate = useNavigate()
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [stats, setStats] = useState([
-    { label: 'Premium', value: 'Gym' },
-    { label: 'Infinity', value: 'Pool' },
-    { label: 'Smart', value: 'Security' }
-  ])
-  const { login } = useAuth()
-  const navigate = useNavigate()
+  const [error, setError] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
 
-  useEffect(() => {
-    api.get('/societies/public/stats')
-      .then((res) => {
-        if (res.data?.stats) setStats(res.data.stats)
-      })
-      .catch(() => {})
-  }, [])
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
+  const submit = async (e) => {
+    e.preventDefault(); setError(''); setLoading(true)
     try {
       await login(form.email, form.password)
-      toast.success('Welcome back!')
       navigate('/')
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Invalid credentials')
+      setError(err.response?.data?.message || 'Invalid email or password')
     } finally { setLoading(false) }
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left dark panel */}
-      <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-12 grain"
-        style={{ background: 'linear-gradient(160deg,#18181b 0%,#09090b 60%,#052e16 100%)' }}>
-        <div className="absolute top-[-80px] left-[-80px] w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-[-60px] right-[-60px] w-80 h-80 bg-emerald-400/5 rounded-full blur-3xl" />
+    <div className="flex min-h-screen bg-bg-primary text-text-primary font-sans">
+      {/* Left Panel - Premium Brand Featureboard */}
+      <div className="hidden relative overflow-hidden lg:flex lg:w-1/2 flex-col justify-between p-12 bg-[#0B0F19]">
+        {/* Animated Background Gradients */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0B0F19] via-[#063B2B] to-[#04281E]" />
+        
+        {/* Decorative Grid Overlay */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
+        <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-brand/10 blur-[100px] animate-pulse" />
+        <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-emerald-400/5 blur-[120px]" />
 
-        <div className="relative flex items-center justify-center">
-          <img src="/logo.png" alt="Panchayat Logo" className="h-28 w-auto object-contain drop-shadow-[0_0_30px_rgba(16,185,129,0.2)]" />
+        {/* Brand Header */}
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/15 ring-1 ring-brand/35 shadow-lg shadow-brand/10">
+              <Building2 size={20} className="text-brand" />
+            </div>
+            <span className="text-lg font-black text-white tracking-wider uppercase">Panchayat</span>
+          </div>
         </div>
 
-        <div className="relative space-y-6">
-          <div className="inline-flex items-center gap-2 bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-semibold px-3 py-1.5 rounded-full">
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-            AI-Powered Society Management
+        {/* Feature Carousel Section */}
+        <div className="relative z-10 space-y-8 my-auto max-w-lg">
+          <div className="space-y-3">
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-brand uppercase tracking-widest bg-brand/10 px-3 py-1 rounded-full border border-brand/20">
+              <Sparkles size={12} /> Next-Gen Society OS
+            </span>
+            <h2 className="text-4xl font-extrabold text-white tracking-tight leading-tight">
+              Operating system for <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-emerald-400">
+                modern communities.
+              </span>
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Experience investor-grade operations: automate visitor gate passes, monitor vehicle slots, process maintenance billing, and leverage localized AI search.
+            </p>
           </div>
-          <h1 className="text-4xl font-bold text-white leading-tight">
-            Smart Living.<br />
-            <span className="text-emerald-400">Simplified.</span>
-          </h1>
-          <p className="text-zinc-400 text-base leading-relaxed max-w-sm">
-            Manage your residential community with AI-powered tools — complaints, payments, bylaws, and more.
-          </p>
-          <div className="grid grid-cols-3 gap-3 pt-2">
-            {Array.isArray(stats) && stats.map((s, i) => (
-              <div key={i} className="bg-white/5 border border-white/8 rounded-xl p-3 text-center">
-                <p className="font-bold text-white text-lg">{s.value}</p>
-                <p className="text-zinc-500 text-[10px] mt-0.5 uppercase tracking-wider">{s.label}</p>
+
+          <div className="space-y-4 pt-4">
+            {features.map(({ icon: Icon, title, text }) => (
+              <div key={title} className="flex gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] backdrop-blur-md shadow-sm">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand/10 border border-brand/20 text-brand flex-shrink-0">
+                  <Icon size={16} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white tracking-wide">{title}</h4>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">{text}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="relative bg-white/5 border border-white/8 rounded-2xl p-5">
-          <p className="text-zinc-300 text-sm italic leading-relaxed">
-            "Panchayat transformed how we manage Green Valley. Complaints resolved 3x faster!"
-          </p>
-          <div className="flex items-center gap-2 mt-3">
-            <div className="w-7 h-7 bg-emerald-600 rounded-full flex items-center justify-center text-white text-xs font-bold">R</div>
-            <div>
-              <p className="text-white text-xs font-semibold">Rajesh Kumar</p>
-              <p className="text-zinc-500 text-xs">Admin, Green Valley Apts</p>
-            </div>
+        {/* Trust Indicators Footer */}
+        <div className="relative z-10 flex items-center justify-between text-xs text-slate-500 pt-6 border-t border-white/5">
+          <div className="flex items-center gap-1">
+            <Award size={12} className="text-brand" />
+            <span>ISO 27001 Certified</span>
           </div>
+          <span>© 2026 Panchayat SaaS</span>
         </div>
       </div>
 
-      {/* Right form */}
-      <div className="flex-1 flex items-center justify-center p-6 bg-zinc-50">
-        <div className="w-full max-w-md animate-slide-up">
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <img src="/logo.png" alt="Panchayat Logo" className="h-12 w-auto object-contain" />
+      {/* Right Panel - Modern Login Card */}
+      <div className="flex flex-1 flex-col items-center justify-center p-6 bg-slate-50/50">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="w-full max-w-md bg-white border border-slate-100 rounded-[24px] p-8 md:p-10 shadow-modal"
+        >
+          {/* Mobile brand header */}
+          <div className="lg:hidden mb-8 flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand/10 ring-1 ring-brand/20">
+              <Building2 size={16} className="text-brand" />
+            </div>
+            <span className="text-base font-bold text-text-primary">Panchayat</span>
           </div>
 
-          <h2 className="text-2xl font-bold text-zinc-900 mb-1">Welcome back</h2>
-          <p className="text-zinc-400 text-sm mb-7">Sign in to your society portal</p>
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold tracking-tight text-text-primary">Sign in</h1>
+            <p className="mt-1.5 text-xs text-text-secondary">Enter credentials to access your society dashboard</p>
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="input-label">Email Address</label>
-              <div className="relative">
-                <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                <input type="email" className="input pl-10" placeholder="you@example.com"
-                  value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required />
-              </div>
+          <form onSubmit={submit} className="space-y-4">
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                className="rounded-xl border border-status-danger/25 bg-status-danger/5 px-4 py-3 text-xs text-status-danger font-semibold"
+              >
+                {error}
+              </motion.div>
+            )}
+
+            <div className="space-y-1">
+              <label className="input-label">Email address</label>
+              <input
+                type="email" className="input" placeholder="admin@society.com"
+                value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                required autoFocus
+              />
             </div>
-            <div>
-              <label className="input-label">Password</label>
+
+            <div className="space-y-1">
+              <div className="flex justify-between items-center">
+                <label className="input-label">Password</label>
+                <a href="#/forgot" className="text-[11px] font-semibold text-brand hover:text-brand-dark transition-colors">
+                  Forgot?
+                </a>
+              </div>
               <div className="relative">
-                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                <input type={showPass ? 'text' : 'password'} className="input pl-10 pr-10" placeholder="••••••••"
-                  value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required />
-                <button type="button" onClick={() => setShowPass(!showPass)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600">
-                  {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  className="input pr-10" placeholder="••••••••"
+                  value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                  required
+                />
+                <button type="button" onClick={() => setShowPass(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary/60 hover:text-text-primary transition-colors">
+                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
-            <button type="submit" className="btn-primary w-full justify-center py-3" disabled={loading}>
-              {loading
-                ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Signing in...</>
-                : <>Sign In <ArrowRight size={15} /></>}
+
+            <div className="flex items-center justify-between pt-1">
+              <label className="flex items-center gap-2 text-xs font-semibold text-text-secondary cursor-pointer select-none">
+                <input 
+                  type="checkbox" 
+                  checked={rememberMe} 
+                  onChange={e => setRememberMe(e.target.checked)} 
+                  className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand accent-brand" 
+                />
+                Remember me
+              </label>
+            </div>
+
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3 justify-center shadow-md shadow-brand/10 mt-2">
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Authenticating...
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 font-bold">
+                  Sign in <ArrowRight size={14} />
+                </span>
+              )}
             </button>
           </form>
 
-          <p className="text-center text-sm text-zinc-400 mt-6">
-            New to Panchayat?{' '}
-            <Link to="/register" className="text-emerald-600 font-semibold hover:text-emerald-700">Create account</Link>
+          <p className="mt-8 text-center text-xs text-text-secondary font-medium">
+            New society?{' '}
+            <Link to="/register" className="font-bold text-brand hover:text-brand-dark transition-colors">
+              Request Platform Registration
+            </Link>
           </p>
-        </div>
+        </motion.div>
       </div>
     </div>
   )

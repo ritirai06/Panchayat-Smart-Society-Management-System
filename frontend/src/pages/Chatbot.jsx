@@ -1,32 +1,27 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
-import { Bot, Send, BookOpen, MessageSquare, Zap, Mic, MicOff, Sparkles, MapPin, Building2 } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { Bot, Send, BookOpen, MessageSquare, Zap, Mic, MicOff, Sparkles, MapPin, Building2, Trash2, History, Plus } from 'lucide-react'
 
 const QUICK = [
-  'Show my flat details',
-  'Any pending dues?',
-  'Gym timings?',
+  { text: 'What are gym timings?', category: 'Facilities' },
+  { text: 'Show pending payments.', category: 'Payments' },
+  { text: 'Visitor gate policy.', category: 'Security' },
+  { text: 'Parking speed limits.', category: 'Parking' },
+  { text: 'Complaint status review.', category: 'Tickets' }
 ]
 
-const SOCIETY_IMAGES = [
-  'https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=1400&q=80',
-  'https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=1400&q=80',
-  'https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=1400&q=80',
-  'https://images.unsplash.com/photo-1472224371017-08207f84aaae?auto=format&fit=crop&w=1400&q=80',
+const MOCK_HISTORY = [
+  { id: 1, title: 'Gym opening hours query', timestamp: '1 hour ago' },
+  { id: 2, title: 'Dues calculation breakdown', timestamp: 'Yesterday' },
+  { id: 3, title: 'Intruder security gate bylaws', timestamp: '3 days ago' },
 ]
-
-const getImageForSociety = (societyId) => {
-  if (!societyId) return SOCIETY_IMAGES[0]
-  const text = String(societyId)
-  const hash = text.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0)
-  return SOCIETY_IMAGES[hash % SOCIETY_IMAGES.length]
-}
 
 const TypingDots = () => (
   <div className="flex gap-1.5 px-1 py-1">
     {[0, 150, 300].map((d) => (
-      <div key={d} className="h-2 w-2 animate-bounce rounded-full bg-slate-300" style={{ animationDelay: `${d}ms`, animationDuration: '1s' }} />
+      <div key={d} className="h-2 w-2 animate-bounce rounded-full bg-slate-350" style={{ animationDelay: `${d}ms`, animationDuration: '1s' }} />
     ))}
   </div>
 )
@@ -34,13 +29,13 @@ const TypingDots = () => (
 const renderText = (text) => {
   if (!text) return text
   return text.split(/\*\*(.*?)\*\*/g).map((p, i) => (
-    i % 2 === 1 ? <strong key={i} className="font-semibold">{p}</strong> : p
+    i % 2 === 1 ? <strong key={i} className="font-semibold text-slate-900">{p}</strong> : p
   ))
 }
 
 const getWelcomeMessage = (societyName) => (
   societyName
-    ? `Hi! I'm Panchayat AI for ${societyName}. I am trained on your society context, bylaws, and support flows.`
+    ? `Hi! I'm Panchayat AI for ${societyName}. Ask me anything about rules, dues, amenity timings, or raise a ticket.`
     : 'Hi! I am Panchayat AI. Ask me anything about your society, dues, amenities, or complaints.'
 )
 
@@ -49,9 +44,10 @@ export default function Chatbot() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [mode, setMode] = useState('chat')
+  const [mode, setMode] = useState('chat') // 'chat' | 'bylaw'
   const [recording, setRecording] = useState(false)
   const [society, setSociety] = useState(null)
+  const [historyList, setHistoryList] = useState(MOCK_HISTORY)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const recognitionRef = useRef(null)
@@ -83,6 +79,12 @@ export default function Chatbot() {
     setInput('')
     setMessages((prev) => [...prev, { role: 'user', content: msg }])
     setLoading(true)
+
+    // Add to simulated history list
+    if (messages.length <= 1) {
+      setHistoryList([{ id: Date.now(), title: msg.length > 28 ? msg.substring(0, 28) + '...' : msg, timestamp: 'Just now' }, ...historyList])
+    }
+
     try {
       const endpoint = mode === 'bylaw' ? '/ai/bylaw' : '/ai/chat'
       const payload = mode === 'bylaw' ? { question: msg, societyId } : { message: msg, societyId }
@@ -98,6 +100,8 @@ export default function Chatbot() {
     }
   }
 
+  const isSpeechSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition) && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')
+
   const toggleRecording = () => {
     if (recording) {
       recognitionRef.current?.stop()
@@ -106,7 +110,7 @@ export default function Chatbot() {
     }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) {
-      alert('Speech recognition not supported in this browser')
+      toast.error('Speech recognition not supported in this browser. Use Chrome or Edge.')
       return
     }
     const r = new SR()
@@ -117,83 +121,108 @@ export default function Chatbot() {
       setInput(e.results[0][0].transcript)
       setRecording(false)
     }
-    r.onerror = () => setRecording(false)
+    r.onerror = (e) => {
+      setRecording(false)
+      console.error('[Speech] error:', e.error)
+      if (e.error === 'not-allowed') toast.error('Microphone blocked. Allow microphone access in address bar.')
+      else if (e.error === 'network') toast.error('Speech recognition needs internet connection.')
+      else if (e.error === 'no-speech') toast('No speech detected. Try again.')
+      else toast.error(`Mic error: ${e.error || 'unknown'}. Try typing instead.`)
+    }
     r.onend = () => setRecording(false)
     recognitionRef.current = r
-    r.start()
-    setRecording(true)
+    try {
+      r.start()
+      setRecording(true)
+    } catch (err) {
+      console.error('[Speech] start error:', err)
+      toast.error('Could not start recording. Please allow microphone access.')
+    }
   }
 
   const clearChat = () => setMessages([{ role: 'assistant', content: getWelcomeMessage(society?.name) }])
 
-  const coverImage = getImageForSociety(societyId)
-
   return (
-    <div className="mx-auto flex h-[calc(100vh-7rem)] max-w-4xl flex-col animate-fade-in">
-      <div className="relative mb-4 overflow-hidden rounded-2xl border border-zinc-200/80 shadow-lg shadow-zinc-200/40">
-        <img src={coverImage} alt="Society cover" className="h-36 w-full object-cover md:h-40" />
-        <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/80 via-zinc-900/65 to-zinc-900/30" />
+    <div className="flex h-[calc(100vh-7rem)] border border-slate-200 bg-white rounded-[24px] overflow-hidden shadow-sm font-sans animate-fade-in">
+      
+      {/* Left Chat History Panel (Hidden on mobile) */}
+      <aside className="hidden md:flex w-64 flex-col bg-slate-50 border-r border-slate-200">
+        <div className="p-4 border-b border-slate-200">
+          <button onClick={clearChat} className="w-full btn-primary py-2 text-xs font-bold justify-center flex gap-1.5 items-center">
+            <Plus size={13} /> New Conversation
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+          <div>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 mb-2 flex items-center gap-1">
+              <History size={10} /> Chat Logs History
+            </p>
+            <div className="space-y-0.5">
+              {historyList.map(h => (
+                <button key={h.id} onClick={() => { send(h.title); toast.success('Loaded query from log') }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-800 truncate transition-colors">
+                  💬 {h.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </aside>
 
-        <div className="absolute inset-0 flex flex-wrap items-start justify-between gap-3 p-4 md:p-5">
-          <div className="flex items-center gap-3">
+      {/* Right Main Chat Area */}
+      <div className="flex-1 flex flex-col justify-between overflow-hidden">
+        {/* Top Header info */}
+        <div className="p-4 md:px-6 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3 shadow-sm bg-slate-50/50">
+          <div className="flex items-center gap-2">
             <div className="relative">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-300/30">
-                <Bot size={19} className="text-white" />
+              <div className="h-9 w-9 bg-brand/10 text-brand border border-brand/20 rounded-xl flex items-center justify-center">
+                <Bot size={18} />
               </div>
-              <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-400" />
+              <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Panchayat AI</h2>
-              <p className="flex items-center gap-1 text-xs text-emerald-100">
-                <Sparkles size={10} className="text-emerald-300" />
-                AI trained on your society
-              </p>
-              <p className="mt-1 flex items-center gap-1 text-xs text-zinc-200">
-                <Building2 size={11} />
-                {society?.name || 'Sunrise Heights'}
-                <MapPin size={11} className="ml-2" />
-                {society?.city || 'Noida'}
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">Panchayat AI</h3>
+              <p className="text-[10px] text-slate-450 text-slate-400 font-semibold flex items-center gap-0.5">
+                <Sparkles size={9} className="text-brand animate-pulse" /> Groq LLaMA 3.3
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex gap-1 rounded-xl bg-white/20 p-1 backdrop-blur">
-              {[['chat', MessageSquare, 'Chat'], ['bylaw', BookOpen, 'Bylaws']].map(([m, Icon, label]) => (
+            <div className="flex gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+              {[['chat', MessageSquare, 'General Chat'], ['bylaw', BookOpen, 'Bylaws Agent']].map(([m, Icon, label]) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
-                    mode === m ? 'bg-white text-emerald-700 shadow-sm' : 'text-white/80 hover:text-white'
+                  className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold tracking-wide transition-all ${
+                    mode === m ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  <Icon size={12} />
+                  <Icon size={10} />
                   {label}
                 </button>
               ))}
             </div>
-            <button onClick={clearChat} className="rounded-xl border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-white/20">
+            <button onClick={clearChat} className="btn-secondary text-[10px] font-bold py-1.5 px-3">
               Clear
             </button>
           </div>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/85 p-4 shadow-inner shadow-zinc-100/70">
-        <div className="space-y-4">
+        {/* Chat message threads */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-slate-50/25">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
               {msg.role === 'assistant' && (
-                <div className="mr-2.5 mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm">
-                  <Bot size={13} className="text-white" />
+                <div className="mr-3 mt-1 h-7 w-7 rounded-full bg-brand/10 border border-brand/20 text-brand flex items-center justify-center flex-shrink-0 shadow-xs">
+                  <Bot size={13} />
                 </div>
               )}
-              <div className={`max-w-[80%] ${msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>
-                <p className="leading-relaxed">{renderText(msg.content)}</p>
+              <div className={`max-w-[75%] ${msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>
+                <p className="leading-relaxed text-xs font-medium">{renderText(msg.content)}</p>
                 {msg.fallback && (
-                  <span className="mt-1.5 flex items-center gap-1 text-xs opacity-50">
-                    <Zap size={9} />
-                    Offline mode
+                  <span className="mt-1 flex items-center gap-1 text-[8px] opacity-40 uppercase tracking-widest font-black">
+                    Local Search Fallback
                   </span>
                 )}
               </div>
@@ -202,8 +231,8 @@ export default function Chatbot() {
 
           {loading && (
             <div className="flex justify-start animate-fade-in">
-              <div className="mr-2.5 mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600">
-                <Bot size={13} className="text-white" />
+              <div className="mr-3 mt-1 h-7 w-7 rounded-full bg-brand/10 border border-brand/25 text-brand flex items-center justify-center flex-shrink-0">
+                <Bot size={13} />
               </div>
               <div className="chat-bubble-ai">
                 <TypingDots />
@@ -212,45 +241,52 @@ export default function Chatbot() {
           )}
           <div ref={bottomRef} />
         </div>
-      </div>
 
-      {messages.length <= 1 && mode === 'chat' && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {QUICK.map((q) => (
-            <button
-              key={q}
-              onClick={() => send(q)}
-              className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-600 shadow-sm transition-all duration-150 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
-            >
-              {q}
+        {/* Footer actions prompt & textbox inputs */}
+        <div className="p-4 border-t border-slate-100 space-y-3 shadow-inner bg-white">
+          {/* Query prompt suggestions bubbles */}
+          {messages.length <= 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1 max-w-full">
+              {QUICK.map((q) => (
+                <button
+                  key={q.text}
+                  onClick={() => send(q.text)}
+                  className="flex-shrink-0 rounded-full border border-slate-250 border-slate-200 bg-white hover:bg-emerald-50 hover:border-brand/30 hover:text-emerald-700 px-3 py-1.5 text-[10px] font-bold text-slate-500 shadow-xs transition-all flex items-center gap-1.5"
+                >
+                  💡 {q.text}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                ref={inputRef}
+                className="input pr-10 text-xs"
+                placeholder={mode === 'bylaw' ? 'Search society bylaws (e.g. Pet policy fine...)' : 'Type your query here...'}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())}
+                disabled={loading}
+              />
+              <button
+                onClick={toggleRecording}
+                disabled={!isSpeechSupported}
+                title={!isSpeechSupported ? 'Microphone not supported' : recording ? 'Mute' : 'Speak'}
+                className={`absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 transition-all ${
+                  !isSpeechSupported ? 'opacity-20 cursor-not-allowed' :
+                  recording ? 'bg-rose-50 text-rose-500 animate-pulse' : 'text-slate-400 hover:bg-slate-100 hover:text-brand'
+                }`}
+              >
+                {recording ? <MicOff size={15} /> : <Mic size={15} />}
+              </button>
+            </div>
+            <button onClick={() => send()} disabled={loading || !input.trim()} className="btn-primary px-4 py-2.5 disabled:opacity-40 flex items-center justify-center">
+              <Send size={14} />
             </button>
-          ))}
+          </div>
         </div>
-      )}
-
-      <div className="mt-3 flex gap-2">
-        <div className="relative flex-1">
-          <input
-            ref={inputRef}
-            className="input pr-12"
-            placeholder={mode === 'bylaw' ? 'Ask about society rules and bylaws...' : 'Ask anything about your society...'}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())}
-            disabled={loading}
-          />
-          <button
-            onClick={toggleRecording}
-            className={`absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 transition-all ${
-              recording ? 'animate-pulse bg-red-50 text-red-500' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-500'
-            }`}
-          >
-            {recording ? <MicOff size={15} /> : <Mic size={15} />}
-          </button>
-        </div>
-        <button onClick={() => send()} disabled={loading || !input.trim()} className="btn-primary px-4 disabled:opacity-40">
-          <Send size={15} />
-        </button>
       </div>
     </div>
   )

@@ -12,6 +12,7 @@ const societySchema = new mongoose.Schema({
   bylawChunks: [{ text: String, embedding: [Number] }], // per-chunk embeddings for semantic search
   maintenanceAmount: { type: Number, default: 2000 },
   logo: { type: String },
+  image: { type: String },
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 

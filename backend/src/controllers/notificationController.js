@@ -58,4 +58,15 @@ const createAnnouncement = async (req, res) => {
   }
 };
 
-module.exports = { getNotifications, markRead, markAllRead, createAnnouncement };
+const clearAll = async (req, res) => {
+  try {
+    await Notification.deleteMany({
+      $or: [{ recipient: req.user._id }, { society: req.user.society, recipient: null }]
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+module.exports = { getNotifications, markRead, markAllRead, createAnnouncement, clearAll };

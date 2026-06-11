@@ -2,13 +2,14 @@ const Groq = require('groq-sdk');
 const Complaint = require('../models/Complaint');
 const Society = require('../models/Society');
 const AILog = require('../models/AILog');
+const ParkingSlot = require('../models/ParkingSlot');
+const Vehicle = require('../models/Vehicle');
 const { findRelevantChunk } = require('../utils/langchain');
 
-// Lazy-initialize Groq client — free tier, no credit card needed
-let _groq = null;
+// Always create fresh Groq client to pick up latest env key
 const getGroq = () => {
-  if (!_groq && process.env.GROQ_API_KEY) _groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  return _groq;
+  if (!process.env.GROQ_API_KEY) return null;
+  return new Groq({ apiKey: process.env.GROQ_API_KEY });
 };
 
 // Helper: call Groq chat completion
@@ -38,11 +39,28 @@ const chat = async (req, res) => {
   const start = Date.now();
   try {
     const society = await Society.findById(societyId);
+
+    // Fetch live parking data for context
+    let parkingContext = '';
+    try {
+      const [slots, vehicles] = await Promise.all([
+        ParkingSlot.find({ society: societyId }).populate('assignedVehicle', 'vehicleNumber').populate('assignedResident', 'name flatNumber'),
+        Vehicle.find({ society: societyId, isActive: true }).populate('parkingSlot', 'slotNumber block floor'),
+      ]);
+      const available = slots.filter(s => s.status === 'Available' && !s.isVisitorSlot);
+      const evFree = slots.filter(s => s.slotType === 'EV' && s.status === 'Available');
+      const visitorFree = slots.filter(s => s.isVisitorSlot && s.status === 'Available');
+      parkingContext = `\nParking Info: Total ${slots.length} slots, ${available.length} available, ${evFree.length} EV free, ${visitorFree.length} visitor free.`;
+      if (available.length) parkingContext += ` Nearest available: ${available[0].slotNumber} (${available[0].block}, ${available[0].floor}).`;
+      if (evFree.length) parkingContext += ` Free EV slot: ${evFree[0].slotNumber}.`;
+      if (visitorFree.length) parkingContext += ` Visitor slot: ${visitorFree[0].slotNumber}.`;
+    } catch { /* skip parking context if error */ }
+
     const systemPrompt = `You are Panchayat AI, a helpful assistant for "${society?.name || 'this society'}".
 Society info: ${society?.address || ''}, ${society?.city || ''}.
 Amenities: ${society?.amenities?.join(', ') || 'gym, pool, parking'}.
 Maintenance: ₹${society?.maintenanceAmount || 2000}/month.
-Rules: ${society?.rules || 'Follow standard society rules. No loud music after 10pm. Pets allowed with registration.'}
+Rules: ${society?.rules || 'Follow standard society rules. No loud music after 10pm. Pets allowed with registration.'}${parkingContext}
 Answer resident queries helpfully and concisely. If unsure, ask them to contact the admin.`;
 
     const { content: reply, tokens } = await groqChat(
@@ -116,7 +134,7 @@ const summarize = async (req, res) => {
     // Generate detailed prompt for AI analysis
     const complaintText = complaints.map(c => `[${c.category}] ${c.title} - Status: ${c.status} - Priority: ${c.priority} - Date: ${c.createdAt.toDateString()}`).join('\n');
     
-    const detailedPrompt = `Analyze these society complaints and provide detailed insights for management:
+    const detailedPrompt = `Analyze these society complaints and provide a structured report. Use markdown headings (###), bullet points (-), and numbered lists. Do not use emojis.
 
 COMPLAINT DATA:
 ${complaintText}
@@ -127,16 +145,13 @@ STATISTICS:
 - Recent (30 days): ${recentComplaints}
 - Top Categories: ${Object.entries(categoryCounts).sort((a,b) => b[1]-a[1]).slice(0,3).map(([cat, count]) => `${cat}(${count})`).join(', ')}
 
-Please provide a comprehensive analysis including:
-1. Key patterns and trends
-2. Most problematic areas
-3. Resolution effectiveness
-4. Potential root causes
-5. Specific recommendations for improvement
-6. Priority areas for maintenance
-7. Communication suggestions for residents
-
-Structure the response as a detailed report with clear sections.`;
+Structure the report with these sections:
+### Overview
+### Key Patterns and Trends
+### Most Problematic Areas
+### Resolution Effectiveness
+### Recommendations
+### Priority Maintenance Areas`;
 
     const { content: detailedAnalysis, tokens } = await groqChat([{ role: 'user', content: detailedPrompt }], 800);
     
@@ -296,13 +311,20 @@ const bylawQuery = async (req, res) => {
         const rules = society.rules;
         const q = question.toLowerCase();
         const lines = rules.split('\n').filter(l => l.trim());
-        const matched = lines.filter(l => q.split(' ').some(w => w.length > 3 && l.toLowerCase().includes(w)));
+        const keywords = q.split(/\s+/).filter(w => w.length > 3);
+        const matchedIndices = new Set();
+        lines.forEach((l, i) => {
+          if (keywords.some(w => l.toLowerCase().includes(w))) {
+            for (let j = i; j <= Math.min(i + 4, lines.length - 1); j++) matchedIndices.add(j);
+          }
+        });
+        const matched = [...matchedIndices].sort((a, b) => a - b).map(i => lines[i]);
         const answer = matched.length
-          ? `Based on society bylaws:\n${matched.slice(0, 5).join('\n')}`
-          : `Here are the society rules:\n${rules.slice(0, 500)}${rules.length > 500 ? '...' : ''}`;
+          ? `Based on society bylaws:\n\n${matched.join('\n')}`
+          : `Here are the society rules:\n\n${rules.slice(0, 600)}${rules.length > 600 ? '\n...' : ''}`;
         return res.json({ success: true, answer, fallback: true });
       }
-    } catch { /* ignore */ }
+    } catch (fbErr) { console.error('[Bylaw] Fallback error:', fbErr.message); }
     res.json({ success: true, answer: 'AI service is temporarily unavailable. Please contact your society admin for bylaw queries.', fallback: true });
   }
 };

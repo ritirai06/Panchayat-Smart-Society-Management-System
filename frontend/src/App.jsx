@@ -12,9 +12,15 @@ import Payments from './pages/Payments'
 import Notifications from './pages/Notifications'
 import Chatbot from './pages/Chatbot'
 import Society from './pages/Society'
+import Parking from './pages/Parking'
+import Visitors from './pages/Visitors'
+import GatePass from './pages/GatePass'
+import Bookings from './pages/Bookings'
+import SOS from './pages/SOS'
+import Bylaws from './pages/Bylaws'
 
 const LoadingFallback = () => (
-  <div className="flex flex-col items-center justify-center h-screen bg-zinc-50 gap-3">
+  <div className="flex flex-col items-center justify-center h-screen bg-slate-50 gap-3">
     <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center animate-pulse shadow-lg shadow-emerald-200">
       <span className="text-white font-bold text-lg">P</span>
     </div>
@@ -39,14 +45,20 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
+      <Route path="/gate/:token" element={<GatePass />} />
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
         <Route path="residents" element={<AdminRoute><Residents /></AdminRoute>} />
         <Route path="complaints" element={<Complaints />} />
         <Route path="payments" element={<Payments />} />
+        <Route path="parking" element={<Parking />} />
+        <Route path="visitors" element={<Visitors />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="chatbot" element={<Chatbot />} />
         <Route path="society" element={<AdminRoute><Society /></AdminRoute>} />
+        <Route path="bookings" element={<Bookings />} />
+        <Route path="sos" element={<SOS />} />
+        <Route path="bylaws" element={<Bylaws />} />
       </Route>
     </Routes>
   )

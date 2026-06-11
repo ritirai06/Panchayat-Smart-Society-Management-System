@@ -34,7 +34,7 @@ export default function FlatCard({ flat }) {
       <div className="space-y-2.5 text-sm">
         <p className="flex items-center gap-2 text-zinc-600">
           <FiUser size={13} className="text-zinc-400" />
-          <span className="font-medium text-zinc-800">{flat.residentName || 'No active resident'}</span>
+          <span className="font-medium text-zinc-900">{flat.residentName || 'No active resident'}</span>
         </p>
         <p className="flex items-center gap-2 text-zinc-500">
           <FiHome size={13} className="text-zinc-400" />

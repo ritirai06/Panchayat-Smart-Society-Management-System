@@ -26,15 +26,19 @@ const getSociety = async (req, res) => {
 const updateSociety = async (req, res) => {
   try {
     let logo = req.body.logo;
+    let image = req.body.image;
     if (req.files?.length) {
-      const upload = await uploadImage(req.files[0].buffer);
-      logo = upload.url;
+      for (const file of req.files) {
+        const upload = await uploadImage(file.buffer);
+        if (file.fieldname === 'image') image = upload.url;
+        else logo = upload.url;
+      }
     }
     const data = { ...req.body };
     if (typeof data.amenities === 'string') {
       try { data.amenities = JSON.parse(data.amenities); } catch (e) { data.amenities = []; }
     }
-    const society = await Society.findByIdAndUpdate(req.params.id, { ...data, logo }, { new: true });
+    const society = await Society.findByIdAndUpdate(req.params.id, { ...data, logo, image }, { new: true });
     res.json({ success: true, society });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
